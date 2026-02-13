@@ -4,57 +4,113 @@ import { useState, useRef, useEffect } from 'react';
 const BackgroundMusic = () => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [showPrompt, setShowPrompt] = useState(true);
+  const [playerReady, setPlayerReady] = useState(false);
+  const playerRef = useRef(null);
   const hasStarted = useRef(false);
+  const containerRef = useRef(null);
 
   const videoId = 'T8rcGhngbuA';
 
+  // Load YouTube IFrame API
   useEffect(() => {
-    // Start music on ANY user interaction with the page
-    const autoStart = () => {
-      if (!hasStarted.current) {
-        hasStarted.current = true;
-        setIsPlaying(true);
-        setShowPrompt(false);
-      }
+    if (window.YT && window.YT.Player) {
+      createPlayer();
+      return;
+    }
+
+    // Load the API script
+    const tag = document.createElement('script');
+    tag.src = 'https://www.youtube.com/iframe_api';
+    document.head.appendChild(tag);
+
+    window.onYouTubeIframeAPIReady = () => {
+      createPlayer();
     };
 
-    // Listen on multiple events
-    document.addEventListener('click', autoStart);
-    document.addEventListener('touchstart', autoStart);
-    document.addEventListener('scroll', autoStart);
-    document.addEventListener('keydown', autoStart);
-    document.addEventListener('mousemove', autoStart);
-
     return () => {
-      document.removeEventListener('click', autoStart);
-      document.removeEventListener('touchstart', autoStart);
-      document.removeEventListener('scroll', autoStart);
-      document.removeEventListener('keydown', autoStart);
-      document.removeEventListener('mousemove', autoStart);
+      window.onYouTubeIframeAPIReady = null;
     };
   }, []);
 
+  const createPlayer = () => {
+    if (playerRef.current) return;
+    
+    playerRef.current = new window.YT.Player('yt-player', {
+      height: '1',
+      width: '1',
+      videoId: videoId,
+      playerVars: {
+        autoplay: 0,
+        controls: 0,
+        loop: 1,
+        playlist: videoId,
+        playsinline: 1, // Important for iOS!
+        modestbranding: 1,
+        rel: 0,
+      },
+      events: {
+        onReady: () => {
+          setPlayerReady(true);
+        },
+        onStateChange: (event) => {
+          // YT.PlayerState.ENDED = 0
+          if (event.data === 0) {
+            // Loop: replay when ended
+            playerRef.current.playVideo();
+          }
+        },
+      },
+    });
+  };
+
+  // Auto-start on first user interaction
+  useEffect(() => {
+    const autoStart = () => {
+      if (!hasStarted.current && playerRef.current) {
+        hasStarted.current = true;
+        try {
+          playerRef.current.playVideo();
+          setIsPlaying(true);
+          setShowPrompt(false);
+        } catch (e) {
+          console.log('Autoplay blocked:', e);
+        }
+      }
+    };
+
+    const events = ['click', 'touchstart', 'touchend', 'scroll', 'keydown'];
+    events.forEach(e => document.addEventListener(e, autoStart, { passive: true }));
+
+    return () => {
+      events.forEach(e => document.removeEventListener(e, autoStart));
+    };
+  }, [playerReady]);
+
   const toggleMusic = (e) => {
     e.stopPropagation();
-    hasStarted.current = true;
-    setIsPlaying(prev => !prev);
+    
+    if (!playerRef.current) return;
+
+    if (isPlaying) {
+      playerRef.current.pauseVideo();
+      setIsPlaying(false);
+    } else {
+      playerRef.current.playVideo();
+      setIsPlaying(true);
+      hasStarted.current = true;
+    }
     setShowPrompt(false);
   };
 
   return (
     <div style={{ position: 'fixed', bottom: '20px', left: '20px', zIndex: 9999 }}>
-      {/* Hidden Youtube Player */}
-      {isPlaying && (
-        <iframe
-          width="1"
-          height="1"
-          src={`https://www.youtube.com/embed/${videoId}?autoplay=1&loop=1&playlist=${videoId}&controls=0&showinfo=0`}
-          title="Background Music"
-          frameBorder="0"
-          allow="autoplay; encrypted-media"
-          style={{ position: 'absolute', opacity: 0, pointerEvents: 'none' }}
-        ></iframe>
-      )}
+      {/* Hidden YouTube Player Container */}
+      <div 
+        ref={containerRef}
+        style={{ position: 'absolute', opacity: 0, pointerEvents: 'none', width: '1px', height: '1px', overflow: 'hidden' }}
+      >
+        <div id="yt-player"></div>
+      </div>
 
       {/* Floating Control Button */}
       <button
@@ -99,7 +155,7 @@ const BackgroundMusic = () => {
           animation: 'fadeInBounce 0.5s ease-out',
           border: '1px solid rgba(255,182,193,0.5)',
         }}>
-          🎵 แตะที่หน้าจอเพื่อเปิดเพลง
+          🎵 แตะเพื่อเปิดเพลง
         </div>
       )}
 
