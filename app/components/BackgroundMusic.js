@@ -4,115 +4,109 @@ import { useState, useRef, useEffect } from 'react';
 const BackgroundMusic = () => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [showPrompt, setShowPrompt] = useState(true);
-  const [playerReady, setPlayerReady] = useState(false);
-  const playerRef = useRef(null);
+  const audioRef = useRef(null);
   const hasStarted = useRef(false);
-  const containerRef = useRef(null);
 
   const videoId = 'T8rcGhngbuA';
+  // Put an mp3 file at /public/music/bg.mp3 for best mobile support
+  const mp3Path = '/music/bg.mp3';
+  const [hasMP3, setHasMP3] = useState(false);
 
-  // Load YouTube IFrame API
+  // Check if mp3 file exists
   useEffect(() => {
-    if (window.YT && window.YT.Player) {
-      createPlayer();
-      return;
-    }
-
-    // Load the API script
-    const tag = document.createElement('script');
-    tag.src = 'https://www.youtube.com/iframe_api';
-    document.head.appendChild(tag);
-
-    window.onYouTubeIframeAPIReady = () => {
-      createPlayer();
-    };
-
-    return () => {
-      window.onYouTubeIframeAPIReady = null;
-    };
+    fetch(mp3Path, { method: 'HEAD' })
+      .then(res => {
+        if (res.ok) {
+          setHasMP3(true);
+        }
+      })
+      .catch(() => setHasMP3(false));
   }, []);
 
-  const createPlayer = () => {
-    if (playerRef.current) return;
-    
-    playerRef.current = new window.YT.Player('yt-player', {
-      height: '1',
-      width: '1',
-      videoId: videoId,
-      playerVars: {
-        autoplay: 0,
-        controls: 0,
-        loop: 1,
-        playlist: videoId,
-        playsinline: 1, // Important for iOS!
-        modestbranding: 1,
-        rel: 0,
-      },
-      events: {
-        onReady: () => {
-          setPlayerReady(true);
-        },
-        onStateChange: (event) => {
-          // YT.PlayerState.ENDED = 0
-          if (event.data === 0) {
-            // Loop: replay when ended
-            playerRef.current.playVideo();
-          }
-        },
-      },
-    });
-  };
-
-  // Auto-start on first user interaction
+  // Auto-start audio on first user interaction
   useEffect(() => {
+    if (!hasMP3) return;
+
     const autoStart = () => {
-      if (!hasStarted.current && playerRef.current) {
+      if (!hasStarted.current && audioRef.current) {
         hasStarted.current = true;
-        try {
-          playerRef.current.playVideo();
-          setIsPlaying(true);
-          setShowPrompt(false);
-        } catch (e) {
-          console.log('Autoplay blocked:', e);
-        }
+        audioRef.current.play()
+          .then(() => {
+            setIsPlaying(true);
+            setShowPrompt(false);
+          })
+          .catch(err => {
+            console.log('Audio play failed:', err);
+            hasStarted.current = false;
+          });
       }
     };
 
-    const events = ['click', 'touchstart', 'touchend', 'scroll', 'keydown'];
+    const events = ['click', 'touchstart', 'touchend', 'scroll', 'keydown', 'mousemove'];
     events.forEach(e => document.addEventListener(e, autoStart, { passive: true }));
 
     return () => {
       events.forEach(e => document.removeEventListener(e, autoStart));
     };
-  }, [playerReady]);
+  }, [hasMP3]);
 
-  const toggleMusic = (e) => {
-    e.stopPropagation();
-    
-    if (!playerRef.current) return;
-
-    if (isPlaying) {
-      playerRef.current.pauseVideo();
-      setIsPlaying(false);
-    } else {
-      playerRef.current.playVideo();
-      setIsPlaying(true);
-      hasStarted.current = true;
+  const toggleMusic = () => {
+    if (hasMP3 && audioRef.current) {
+      if (isPlaying) {
+        audioRef.current.pause();
+        setIsPlaying(false);
+      } else {
+        audioRef.current.play().then(() => setIsPlaying(true));
+        hasStarted.current = true;
+      }
     }
     setShowPrompt(false);
   };
 
+  // If no MP3, show a visible cute YouTube mini player
+  if (!hasMP3) {
+    return (
+      <div style={{
+        position: 'fixed',
+        bottom: '20px',
+        left: '20px',
+        zIndex: 9999,
+        display: 'flex',
+        alignItems: 'center',
+        gap: '10px',
+      }}>
+        <div style={{
+          background: 'linear-gradient(135deg, rgba(255,240,245,0.95), rgba(255,228,225,0.95))',
+          borderRadius: '16px',
+          padding: '8px',
+          boxShadow: '0 4px 20px rgba(219,112,147,0.25)',
+          border: '1px solid rgba(255,182,193,0.5)',
+          backdropFilter: 'blur(10px)',
+        }}>
+          <div style={{ fontSize: '11px', textAlign: 'center', color: '#db7093', marginBottom: '4px', fontWeight: '500' }}>
+            🎵 กดเล่นเพลง
+          </div>
+          <iframe
+            width="200"
+            height="40"
+            src={`https://www.youtube.com/embed/${videoId}?loop=1&playlist=${videoId}&controls=1&showinfo=0&modestbranding=1`}
+            title="Background Music"
+            frameBorder="0"
+            allow="autoplay; encrypted-media"
+            style={{ borderRadius: '8px', display: 'block' }}
+          ></iframe>
+        </div>
+      </div>
+    );
+  }
+
+  // If MP3 exists, use the audio element (best mobile support)
   return (
     <div style={{ position: 'fixed', bottom: '20px', left: '20px', zIndex: 9999 }}>
-      {/* Hidden YouTube Player Container */}
-      <div 
-        ref={containerRef}
-        style={{ position: 'absolute', opacity: 0, pointerEvents: 'none', width: '1px', height: '1px', overflow: 'hidden' }}
-      >
-        <div id="yt-player"></div>
-      </div>
+      <audio ref={audioRef} loop preload="auto">
+        <source src={mp3Path} type="audio/mpeg" />
+      </audio>
 
-      {/* Floating Control Button */}
       <button
         onClick={toggleMusic}
         style={{
